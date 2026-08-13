@@ -1,0 +1,14 @@
+<resources>
+    <color name="widget_background">#1E1E2E</color>
+    <color name="widget_text_primary">#FFFFFF</color>
+    <color name="widget_text_secondary">#A0A0B0</color>
+    <color name="widget_accent">#00E676</color>
+    <color name="widget_download_color">#40C4FF</color>
+    <color name="widget_upload_color">#FFAB40</color>
+    <color name="widget_error_color">#FF5252</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
+</resources>

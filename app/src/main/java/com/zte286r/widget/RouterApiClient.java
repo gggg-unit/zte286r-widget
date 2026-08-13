@@ -49,6 +49,11 @@ public class RouterApiClient {
      * Birden fazla login yöntemi dener (firmware sürümlerine göre).
      */
     public boolean login() throws Exception {
+        // Önce login durumunu kontrol et
+        if (checkLoginStatus()) {
+            return true;
+        }
+
         // Yöntem 1: Standart ZTE login (cmd=LOGIN, password=base64)
         if (tryLoginMethod1()) {
             return true;
@@ -79,7 +84,40 @@ public class RouterApiClient {
             return true;
         }
 
+        // Yöntem 7: pass parametresi ile (bazı firmware'ler)
+        if (tryLoginMethod7()) {
+            return true;
+        }
+
+        // Yöntem 8: isTest=true ile
+        if (tryLoginMethod8()) {
+            return true;
+        }
+
+        // Yöntem 9: pass parametresi + isTest=false
+        if (tryLoginMethod9()) {
+            return true;
+        }
+
+        // Yöntem 10: pwd parametresi ile
+        if (tryLoginMethod10()) {
+            return true;
+        }
+
         lastError = "Login başarısız: " + lastError;
+        return false;
+    }
+
+    private boolean checkLoginStatus() {
+        try {
+            String statusUrl = baseUrl + "/goform/goform_get_cmd_process?cmd=is_login";
+            String response = doGet(statusUrl);
+            if (response != null && response.contains("1")) {
+                return true;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Login status check failed", e);
+        }
         return false;
     }
 
@@ -205,6 +243,92 @@ public class RouterApiClient {
         } catch (Exception e) {
             lastError = "Yöntem 6 hata: " + e.getMessage();
             Log.e(TAG, "Login method 6 failed", e);
+        }
+        return false;
+    }
+
+    private boolean tryLoginMethod7() {
+        try {
+            String loginUrl = baseUrl + "/goform/goform_set_cmd_process";
+            String encodedPassword = Base64.encodeToString(password.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+
+            Map<String, String> params = new HashMap<>();
+            params.put("cmd", "LOGIN");
+            params.put("pass", encodedPassword);
+
+            String response = doPost(loginUrl, params);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 7 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 7 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 7 failed", e);
+        }
+        return false;
+    }
+
+    private boolean tryLoginMethod8() {
+        try {
+            String loginUrl = baseUrl + "/goform/goform_set_cmd_process";
+            String encodedPassword = Base64.encodeToString(password.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+
+            Map<String, String> params = new HashMap<>();
+            params.put("cmd", "LOGIN");
+            params.put("password", encodedPassword);
+            params.put("isTest", "true");
+
+            String response = doPost(loginUrl, params);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 8 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 8 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 8 failed", e);
+        }
+        return false;
+    }
+
+    private boolean tryLoginMethod9() {
+        try {
+            String loginUrl = baseUrl + "/goform/goform_set_cmd_process";
+            String encodedPassword = Base64.encodeToString(password.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+
+            Map<String, String> params = new HashMap<>();
+            params.put("cmd", "LOGIN");
+            params.put("pass", encodedPassword);
+            params.put("isTest", "false");
+
+            String response = doPost(loginUrl, params);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 9 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 9 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 9 failed", e);
+        }
+        return false;
+    }
+
+    private boolean tryLoginMethod10() {
+        try {
+            String loginUrl = baseUrl + "/goform/goform_set_cmd_process";
+            String encodedPassword = Base64.encodeToString(password.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+
+            Map<String, String> params = new HashMap<>();
+            params.put("cmd", "LOGIN");
+            params.put("pwd", encodedPassword);
+
+            String response = doPost(loginUrl, params);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 10 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 10 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 10 failed", e);
         }
         return false;
     }

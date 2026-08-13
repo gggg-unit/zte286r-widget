@@ -64,6 +64,21 @@ public class RouterApiClient {
             return true;
         }
 
+        // Yöntem 4: Şifre düz metin olarak gönderilir
+        if (tryLoginMethod4()) {
+            return true;
+        }
+
+        // Yöntem 5: cmd=LOGIN, password düz metin, isTest=false
+        if (tryLoginMethod5()) {
+            return true;
+        }
+
+        // Yöntem 6: Referer header ile
+        if (tryLoginMethod6()) {
+            return true;
+        }
+
         lastError = "Login başarısız: " + lastError;
         return false;
     }
@@ -128,6 +143,68 @@ public class RouterApiClient {
         } catch (Exception e) {
             lastError = "Yöntem 3 hata: " + e.getMessage();
             Log.e(TAG, "Login method 3 failed", e);
+        }
+        return false;
+    }
+
+    private boolean tryLoginMethod4() {
+        try {
+            String loginUrl = baseUrl + "/goform/goform_set_cmd_process";
+
+            Map<String, String> params = new HashMap<>();
+            params.put("cmd", "LOGIN");
+            params.put("password", password);
+
+            String response = doPost(loginUrl, params);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 4 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 4 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 4 failed", e);
+        }
+        return false;
+    }
+
+    private boolean tryLoginMethod5() {
+        try {
+            String loginUrl = baseUrl + "/goform/goform_set_cmd_process";
+
+            Map<String, String> params = new HashMap<>();
+            params.put("cmd", "LOGIN");
+            params.put("password", password);
+            params.put("isTest", "false");
+
+            String response = doPost(loginUrl, params);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 5 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 5 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 5 failed", e);
+        }
+        return false;
+    }
+
+    private boolean tryLoginMethod6() {
+        try {
+            String loginUrl = baseUrl + "/goform/goform_set_cmd_process";
+            String encodedPassword = Base64.encodeToString(password.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+
+            Map<String, String> params = new HashMap<>();
+            params.put("cmd", "LOGIN");
+            params.put("password", encodedPassword);
+
+            String response = doPostWithReferer(loginUrl, params);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 6 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 6 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 6 failed", e);
         }
         return false;
     }
@@ -331,6 +408,14 @@ public class RouterApiClient {
     }
 
     private String doPost(String urlString, Map<String, String> params) throws Exception {
+        return doPostInternal(urlString, params, false);
+    }
+
+    private String doPostWithReferer(String urlString, Map<String, String> params) throws Exception {
+        return doPostInternal(urlString, params, true);
+    }
+
+    private String doPostInternal(String urlString, Map<String, String> params, boolean withReferer) throws Exception {
         URL url = new URL(urlString);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("POST");
@@ -339,6 +424,12 @@ public class RouterApiClient {
         conn.setDoOutput(true);
         conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
         conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+        conn.setRequestProperty("X-Requested-With", "XMLHttpRequest");
+        conn.setRequestProperty("Accept", "application/json, text/javascript, */*; q=0.01");
+
+        if (withReferer) {
+            conn.setRequestProperty("Referer", baseUrl + "/index.html");
+        }
 
         if (sessionCookie != null) {
             conn.setRequestProperty("Cookie", sessionCookie);

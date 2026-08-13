@@ -11,6 +11,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -101,6 +102,26 @@ public class RouterApiClient {
 
         // Yöntem 10: pwd parametresi ile
         if (tryLoginMethod10()) {
+            return true;
+        }
+
+        // Yöntem 11: MD5 hash ile
+        if (tryLoginMethod11()) {
+            return true;
+        }
+
+        // Yöntem 12: MD5 hash + isTest=false
+        if (tryLoginMethod12()) {
+            return true;
+        }
+
+        // Yöntem 13: passwd parametresi + base64
+        if (tryLoginMethod13()) {
+            return true;
+        }
+
+        // Yöntem 14: passwd parametresi + MD5
+        if (tryLoginMethod14()) {
             return true;
         }
 
@@ -331,6 +352,106 @@ public class RouterApiClient {
             Log.e(TAG, "Login method 10 failed", e);
         }
         return false;
+    }
+
+    private boolean tryLoginMethod11() {
+        try {
+            String loginUrl = baseUrl + "/goform/goform_set_cmd_process";
+            String md5Password = md5(password);
+
+            Map<String, String> params = new HashMap<>();
+            params.put("cmd", "LOGIN");
+            params.put("password", md5Password);
+
+            String response = doPost(loginUrl, params);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 11 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 11 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 11 failed", e);
+        }
+        return false;
+    }
+
+    private boolean tryLoginMethod12() {
+        try {
+            String loginUrl = baseUrl + "/goform/goform_set_cmd_process";
+            String md5Password = md5(password);
+
+            Map<String, String> params = new HashMap<>();
+            params.put("cmd", "LOGIN");
+            params.put("password", md5Password);
+            params.put("isTest", "false");
+
+            String response = doPost(loginUrl, params);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 12 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 12 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 12 failed", e);
+        }
+        return false;
+    }
+
+    private boolean tryLoginMethod13() {
+        try {
+            String loginUrl = baseUrl + "/goform/goform_set_cmd_process";
+            String encodedPassword = Base64.encodeToString(password.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+
+            Map<String, String> params = new HashMap<>();
+            params.put("cmd", "LOGIN");
+            params.put("passwd", encodedPassword);
+
+            String response = doPost(loginUrl, params);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 13 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 13 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 13 failed", e);
+        }
+        return false;
+    }
+
+    private boolean tryLoginMethod14() {
+        try {
+            String loginUrl = baseUrl + "/goform/goform_set_cmd_process";
+            String md5Password = md5(password);
+
+            Map<String, String> params = new HashMap<>();
+            params.put("cmd", "LOGIN");
+            params.put("passwd", md5Password);
+
+            String response = doPost(loginUrl, params);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 14 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 14 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 14 failed", e);
+        }
+        return false;
+    }
+
+    private String md5(String input) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] digest = md.digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            Log.e(TAG, "MD5 error", e);
+            return input;
+        }
     }
 
     private boolean isLoginSuccess(String response) {

@@ -48,9 +48,10 @@
         <!-- Periodic Work for widget updates -->
         <service
             android:name="androidx.work.impl.background.systemjob.SystemJobService"
-            android:exported="false"
+            android:exported="true"
             android:permission="android.permission.BIND_JOB_SERVICE"
-            tools:node="merge" />
+            tools:node="merge"
+            tools:replace="android:exported" />
 
     </application>
 

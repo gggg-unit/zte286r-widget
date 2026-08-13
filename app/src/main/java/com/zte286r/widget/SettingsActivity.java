@@ -98,6 +98,7 @@ public class SettingsActivity extends AppCompatActivity {
         executor.execute(() -> {
             RouterApiClient client = new RouterApiClient(routerIp, username, password);
             boolean success = client.testConnection();
+            String errorDetail = client.getLastError();
 
             mainHandler.post(() -> {
                 progressBar.setVisibility(View.GONE);
@@ -108,7 +109,11 @@ public class SettingsActivity extends AppCompatActivity {
                     tvStatus.setText(R.string.settings_test_success);
                     tvStatus.setTextColor(getColor(R.color.widget_accent));
                 } else {
-                    tvStatus.setText(R.string.settings_test_fail);
+                    String msg = getString(R.string.settings_test_fail);
+                    if (errorDetail != null && !errorDetail.isEmpty()) {
+                        msg += "\n" + errorDetail;
+                    }
+                    tvStatus.setText(msg);
                     tvStatus.setTextColor(getColor(R.color.widget_error_color));
                 }
             });

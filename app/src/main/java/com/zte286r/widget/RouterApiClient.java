@@ -27,6 +27,7 @@ public class RouterApiClient {
     private final String username;
     private final String password;
     private String sessionCookie;
+    private String lastError = "";
 
     public RouterApiClient(String routerIp, String username, String password) {
         // IP zaten http:// içeriyorsa kullan, değilse ekle
@@ -39,35 +40,115 @@ public class RouterApiClient {
         this.password = password;
     }
 
+    public String getLastError() {
+        return lastError;
+    }
+
     /**
      * Router'a login olur ve session cookie'sini saklar.
+     * Birden fazla login yöntemi dener (firmware sürümlerine göre).
      */
     public boolean login() throws Exception {
-        String loginUrl = baseUrl + "/goform/goform_set_cmd_process";
-
-        // ZTE router'lar şifreyi base64 olarak gönderir
-        String encodedPassword = Base64.encodeToString(password.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
-
-        Map<String, String> params = new HashMap<>();
-        params.put("cmd", "LOGIN");
-        params.put("password", encodedPassword);
-
-        String response = doPost(loginUrl, params);
-
-        // Login başarılı mı kontrol et
-        if (response != null && response.contains("success")) {
+        // Yöntem 1: Standart ZTE login (cmd=LOGIN, password=base64)
+        if (tryLoginMethod1()) {
             return true;
         }
 
-        // Bazı modellerde farklı yanıt formatı olabilir
-        if (response != null && response.contains("result")) {
-            try {
-                JSONObject json = new JSONObject(response);
-                String result = json.optString("result", "");
-                return "success".equalsIgnoreCase(result);
-            } catch (Exception e) {
-                Log.e(TAG, "Login response parse error", e);
+        // Yöntem 2: cmd=login (küçük harf)
+        if (tryLoginMethod2()) {
+            return true;
+        }
+
+        // Yöntem 3: isTest parametresi ile
+        if (tryLoginMethod3()) {
+            return true;
+        }
+
+        lastError = "Login başarısız: " + lastError;
+        return false;
+    }
+
+    private boolean tryLoginMethod1() {
+        try {
+            String loginUrl = baseUrl + "/goform/goform_set_cmd_process";
+            String encodedPassword = Base64.encodeToString(password.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+
+            Map<String, String> params = new HashMap<>();
+            params.put("cmd", "LOGIN");
+            params.put("password", encodedPassword);
+
+            String response = doPost(loginUrl, params);
+            if (isLoginSuccess(response)) {
+                return true;
             }
+            lastError = "Yöntem 1 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 1 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 1 failed", e);
+        }
+        return false;
+    }
+
+    private boolean tryLoginMethod2() {
+        try {
+            String loginUrl = baseUrl + "/goform/goform_set_cmd_process";
+            String encodedPassword = Base64.encodeToString(password.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+
+            Map<String, String> params = new HashMap<>();
+            params.put("cmd", "login");
+            params.put("password", encodedPassword);
+
+            String response = doPost(loginUrl, params);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 2 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 2 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 2 failed", e);
+        }
+        return false;
+    }
+
+    private boolean tryLoginMethod3() {
+        try {
+            String loginUrl = baseUrl + "/goform/goform_set_cmd_process";
+            String encodedPassword = Base64.encodeToString(password.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+
+            Map<String, String> params = new HashMap<>();
+            params.put("cmd", "LOGIN");
+            params.put("password", encodedPassword);
+            params.put("isTest", "false");
+
+            String response = doPost(loginUrl, params);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 3 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 3 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 3 failed", e);
+        }
+        return false;
+    }
+
+    private boolean isLoginSuccess(String response) {
+        if (response == null) return false;
+
+        // "success" içeriyorsa başarılı
+        if (response.contains("success")) {
+            return true;
+        }
+
+        // JSON formatında result alanı kontrol et
+        try {
+            JSONObject json = new JSONObject(response);
+            String result = json.optString("result", "");
+            if ("success".equalsIgnoreCase(result)) {
+                return true;
+            }
+        } catch (Exception e) {
+            // JSON değilse devam et
         }
 
         return false;
@@ -78,77 +159,115 @@ public class RouterApiClient {
      * @return Map içinde used_bytes, rx_bytes, tx_bytes anahtarları
      */
     public Map<String, Long> getTrafficStatistics() throws Exception {
-        String statsUrl = baseUrl + "/goform/goform_get_cmd_process?cmd=traffic_stat";
+        // Önce login olmayı dene
+        if (sessionCookie == null) {
+            if (!login()) {
+                throw new Exception("Login başarısız: " + lastError);
+            }
+        }
 
-        String response = doGet(statsUrl);
-        Map<String, Long> result = new HashMap<>();
+        // Yöntem 1: traffic_stat
+        try {
+            String statsUrl = baseUrl + "/goform/goform_get_cmd_process?cmd=traffic_stat";
+            String response = doGet(statsUrl);
+            Map<String, Long> result = parseTrafficResponse(response);
+            if (result != null) {
+                return result;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "traffic_stat failed", e);
+        }
 
+        // Yöntem 2: traffic_statistics
+        try {
+            String statsUrl = baseUrl + "/goform/goform_get_cmd_process?cmd=traffic_statistics";
+            String response = doGet(statsUrl);
+            Map<String, Long> result = parseTrafficResponse(response);
+            if (result != null) {
+                return result;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "traffic_statistics failed", e);
+        }
+
+        // Yöntem 3: rx_bytes, tx_bytes
+        try {
+            String statsUrl = baseUrl + "/goform/goform_get_cmd_process?cmd=rx_bytes,tx_bytes";
+            String response = doGet(statsUrl);
+            Map<String, Long> result = parseTrafficResponse(response);
+            if (result != null) {
+                return result;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "rx_bytes,tx_bytes failed", e);
+        }
+
+        // Yöntem 4: monthly_rx_bytes, monthly_tx_bytes
+        try {
+            String statsUrl = baseUrl + "/goform/goform_get_cmd_process?cmd=monthly_rx_bytes,monthly_tx_bytes";
+            String response = doGet(statsUrl);
+            Map<String, Long> result = parseTrafficResponse(response);
+            if (result != null) {
+                return result;
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "monthly failed", e);
+        }
+
+        throw new Exception("Trafik istatistikleri alınamadı. Son hata: " + lastError);
+    }
+
+    private Map<String, Long> parseTrafficResponse(String response) {
         if (response == null || response.isEmpty()) {
-            throw new Exception("Boş yanıt alındı");
+            return null;
         }
 
         Log.d(TAG, "Traffic response: " + response);
 
         try {
             JSONObject json = new JSONObject(response);
+
+            // traffic_stat içinde nested olabilir
             JSONObject traffic = json.optJSONObject("traffic_stat");
             if (traffic != null) {
-                long rxBytes = traffic.optLong("rx_bytes", 0);
-                long txBytes = traffic.optLong("tx_bytes", 0);
-                result.put("rx_bytes", rxBytes);
-                result.put("tx_bytes", txBytes);
-                result.put("used_bytes", rxBytes + txBytes);
-                return result;
+                long rxBytes = traffic.optLong("rx_bytes", -1);
+                long txBytes = traffic.optLong("tx_bytes", -1);
+                if (rxBytes >= 0 && txBytes >= 0) {
+                    Map<String, Long> result = new HashMap<>();
+                    result.put("rx_bytes", rxBytes);
+                    result.put("tx_bytes", txBytes);
+                    result.put("used_bytes", rxBytes + txBytes);
+                    return result;
+                }
             }
-        } catch (Exception e) {
-            Log.e(TAG, "JSON parse error", e);
-        }
 
-        // Alternatif: doğrudan alanlar
-        try {
-            JSONObject json = new JSONObject(response);
+            // Doğrudan alanlar
             long rxBytes = json.optLong("rx_bytes", -1);
             long txBytes = json.optLong("tx_bytes", -1);
             if (rxBytes >= 0 && txBytes >= 0) {
+                Map<String, Long> result = new HashMap<>();
                 result.put("rx_bytes", rxBytes);
                 result.put("tx_bytes", txBytes);
                 result.put("used_bytes", rxBytes + txBytes);
                 return result;
             }
-        } catch (Exception e) {
-            Log.e(TAG, "JSON parse error alt", e);
-        }
 
-        throw new Exception("İstatistik verisi ayrıştırılamadı: " + response);
-    }
+            // monthly_rx_bytes, monthly_tx_bytes
+            long monthlyRx = json.optLong("monthly_rx_bytes", -1);
+            long monthlyTx = json.optLong("monthly_tx_bytes", -1);
+            if (monthlyRx >= 0 && monthlyTx >= 0) {
+                Map<String, Long> result = new HashMap<>();
+                result.put("rx_bytes", monthlyRx);
+                result.put("tx_bytes", monthlyTx);
+                result.put("used_bytes", monthlyRx + monthlyTx);
+                return result;
+            }
 
-    /**
-     * Aylık veri kullanımını çeker (bazı modellerde mevcut).
-     */
-    public Map<String, Long> getMonthlyTraffic() throws Exception {
-        String statsUrl = baseUrl + "/goform/goform_get_cmd_process?cmd=monthly_rx_bytes,monthly_tx_bytes";
-
-        String response = doGet(statsUrl);
-        Map<String, Long> result = new HashMap<>();
-
-        if (response == null || response.isEmpty()) {
-            throw new Exception("Boş yanıt alındı");
-        }
-
-        Log.d(TAG, "Monthly response: " + response);
-
-        try {
-            JSONObject json = new JSONObject(response);
-            long rxBytes = json.optLong("monthly_rx_bytes", 0);
-            long txBytes = json.optLong("monthly_tx_bytes", 0);
-            result.put("rx_bytes", rxBytes);
-            result.put("tx_bytes", txBytes);
-            result.put("used_bytes", rxBytes + txBytes);
-            return result;
         } catch (Exception e) {
             Log.e(TAG, "JSON parse error", e);
-            throw new Exception("Aylık veri ayrıştırılamadı: " + response);
         }
+
+        return null;
     }
 
     /**
@@ -156,9 +275,14 @@ public class RouterApiClient {
      */
     public boolean testConnection() {
         try {
-            return login();
+            boolean success = login();
+            if (!success) {
+                Log.e(TAG, "Connection test failed: " + lastError);
+            }
+            return success;
         } catch (Exception e) {
-            Log.e(TAG, "Connection test failed", e);
+            lastError = e.getMessage();
+            Log.e(TAG, "Connection test exception", e);
             return false;
         }
     }
@@ -179,10 +303,11 @@ public class RouterApiClient {
         int responseCode = conn.getResponseCode();
         if (responseCode == 401) {
             // Session expired, try to re-login
+            sessionCookie = null;
             if (login()) {
                 return doGet(urlString);
             }
-            throw new Exception("Yetkilendirme hatası (401)");
+            throw new Exception("Yetkilendirme hatası (401): " + lastError);
         }
 
         if (responseCode >= 200 && responseCode < 300) {

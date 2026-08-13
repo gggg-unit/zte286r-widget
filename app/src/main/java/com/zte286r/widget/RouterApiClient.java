@@ -125,6 +125,36 @@ public class RouterApiClient {
             return true;
         }
 
+        // Yöntem 15: GET ile login (base64 şifre, F12 formatına uygun)
+        if (tryLoginMethod15()) {
+            return true;
+        }
+
+        // Yöntem 16: GET ile login (base64 şifre + isTest=false)
+        if (tryLoginMethod16()) {
+            return true;
+        }
+
+        // Yöntem 17: Raw body ile POST (URL encode'suz base64)
+        if (tryLoginMethod17()) {
+            return true;
+        }
+
+        // Yöntem 18: cgi-bin endpoint + base64
+        if (tryLoginMethod18()) {
+            return true;
+        }
+
+        // Yöntem 19: cgi-bin endpoint + MD5
+        if (tryLoginMethod19()) {
+            return true;
+        }
+
+        // Yöntem 20: username parametresi ile
+        if (tryLoginMethod20()) {
+            return true;
+        }
+
         lastError = "Login başarısız: " + lastError;
         return false;
     }
@@ -439,6 +469,125 @@ public class RouterApiClient {
         return false;
     }
 
+    private boolean tryLoginMethod15() {
+        try {
+            String encodedPassword = Base64.encodeToString(password.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+            String loginUrl = baseUrl + "/goform/goform_set_cmd_process?cmd=LOGIN&password=" + encodedPassword;
+
+            String response = doGet(loginUrl);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 15 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 15 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 15 failed", e);
+        }
+        return false;
+    }
+
+    private boolean tryLoginMethod16() {
+        try {
+            String encodedPassword = Base64.encodeToString(password.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+            String loginUrl = baseUrl + "/goform/goform_set_cmd_process?cmd=LOGIN&password=" + encodedPassword + "&isTest=false";
+
+            String response = doGet(loginUrl);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 16 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 16 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 16 failed", e);
+        }
+        return false;
+    }
+
+    private boolean tryLoginMethod17() {
+        try {
+            String loginUrl = baseUrl + "/goform/goform_set_cmd_process";
+            String encodedPassword = Base64.encodeToString(password.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+
+            // URL encode KULLANMA, ham base64 gönder
+            String body = "cmd=LOGIN&password=" + encodedPassword;
+
+            String response = doPostRaw(loginUrl, body);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 17 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 17 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 17 failed", e);
+        }
+        return false;
+    }
+
+    private boolean tryLoginMethod18() {
+        try {
+            String loginUrl = baseUrl + "/cgi-bin/goform/goform_set_cmd_process";
+            String encodedPassword = Base64.encodeToString(password.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+
+            Map<String, String> params = new HashMap<>();
+            params.put("cmd", "LOGIN");
+            params.put("password", encodedPassword);
+
+            String response = doPost(loginUrl, params);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 18 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 18 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 18 failed", e);
+        }
+        return false;
+    }
+
+    private boolean tryLoginMethod19() {
+        try {
+            String loginUrl = baseUrl + "/cgi-bin/goform/goform_set_cmd_process";
+            String md5Password = md5(password);
+
+            Map<String, String> params = new HashMap<>();
+            params.put("cmd", "LOGIN");
+            params.put("password", md5Password);
+
+            String response = doPost(loginUrl, params);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 19 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 19 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 19 failed", e);
+        }
+        return false;
+    }
+
+    private boolean tryLoginMethod20() {
+        try {
+            String loginUrl = baseUrl + "/goform/goform_set_cmd_process";
+            String encodedPassword = Base64.encodeToString(password.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+
+            Map<String, String> params = new HashMap<>();
+            params.put("cmd", "LOGIN");
+            params.put("password", encodedPassword);
+            params.put("username", username);
+            params.put("isTest", "false");
+
+            String response = doPost(loginUrl, params);
+            if (isLoginSuccess(response)) {
+                return true;
+            }
+            lastError = "Yöntem 20 başarısız: " + response;
+        } catch (Exception e) {
+            lastError = "Yöntem 20 hata: " + e.getMessage();
+            Log.e(TAG, "Login method 20 failed", e);
+        }
+        return false;
+    }
+
     private String md5(String input) {
         try {
             MessageDigest md = MessageDigest.getInstance("MD5");
@@ -654,6 +803,45 @@ public class RouterApiClient {
 
     private String doPost(String urlString, Map<String, String> params) throws Exception {
         return doPostInternal(urlString, params, false);
+    }
+
+    private String doPostRaw(String urlString, String body) throws Exception {
+        URL url = new URL(urlString);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("POST");
+        conn.setConnectTimeout(TIMEOUT_MS);
+        conn.setReadTimeout(TIMEOUT_MS);
+        conn.setDoOutput(true);
+        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+
+        if (sessionCookie != null) {
+            conn.setRequestProperty("Cookie", sessionCookie);
+        }
+
+        try (OutputStream os = conn.getOutputStream()) {
+            os.write(body.getBytes(StandardCharsets.UTF_8));
+        }
+
+        int responseCode = conn.getResponseCode();
+
+        String setCookie = conn.getHeaderField("Set-Cookie");
+        if (setCookie != null) {
+            sessionCookie = setCookie.split(";")[0];
+        }
+
+        if (responseCode >= 200 && responseCode < 300) {
+            BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line);
+            }
+            reader.close();
+            return sb.toString();
+        }
+
+        throw new Exception("HTTP hata kodu: " + responseCode);
     }
 
     private String doPostWithReferer(String urlString, Map<String, String> params) throws Exception {
